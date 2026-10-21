@@ -45,8 +45,9 @@ the split doesn't need separate hosts).
 3. **Render** (free, no card): New → Blueprint, point it at this repo. Add
    `DATABASE_URL` as an environment variable when prompted, deploy.
 4. **Keep it awake**: Render free sleeps after 15 idle minutes (~1 min wake).
-   Add a free UptimeRobot monitor on `/`, every 5 minutes, so the webhook
-   endpoint stays within its 500 ms budget.
+   Open the deployed `/demo` page (it polls the API every second) or add a
+   5-minute uptime monitor on `/` so the webhook endpoint stays within its
+   500 ms budget.
 
 Verify on the public URL the same way as below (`curl` replaces localhost).
 

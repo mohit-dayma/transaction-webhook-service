@@ -1,0 +1,8 @@
+.venv/
+.pgdata/
+__pycache__/
+*.log
+.git/
+.env
+*.md
+scripts/

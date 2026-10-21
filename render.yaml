@@ -1,0 +1,20 @@
+# Render Blueprint. Deploy with `render blueprint launch`, or set DATABASE_URL
+# manually in the dashboard after creating the service from this repo.
+services:
+  - type: web
+    name: walnut-webhook-service
+    runtime: docker
+    plan: free
+    region: singapore            # closest region to Indian payment processors
+    healthCheckPath: /            # the assignment's health endpoint
+    autoDeploy: true
+    envVars:
+      # Supabase session-pooler DSN (IPv4, port 6543) — set this in the
+      # Render dashboard, never commit it:
+      #   postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres
+      - key: DATABASE_URL
+        sync: false
+      - key: PROCESSING_DELAY_SECONDS
+        value: "30"
+      - key: CLAIM_LEASE_SECONDS
+        value: "120"

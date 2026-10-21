@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settlement Ledger — webhook demo</title>
+<style>
+  :root {
+    --bg: #0E1420;
+    --panel: #141C2B;
+    --panel-2: #182233;
+    --line: #263244;
+    --text: #DCE5F0;
+    --muted: #7C8BA1;
+    --amber: #E8B44A;
+    --mint: #3ECF8E;
+    --coral: #E0685C;
+    --focus: #6FA8FF;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.55 "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono {
+    font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 28px 20px 64px; }
+
+  /* ---- top strip ------------------------------------------------------ */
+  header {
+    display: flex; flex-wrap: wrap; gap: 10px 24px; align-items: baseline;
+    border-bottom: 1px solid var(--line); padding-bottom: 14px;
+  }
+  header h1 { font-size: 19px; font-weight: 600; margin: 0; letter-spacing: .01em; }
+  header .clock { color: var(--muted); font-size: 13px; }
+  header .health { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--muted); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--coral); }
+  .dot.ok { background: var(--mint); }
+
+  /* ---- stats rail ------------------------------------------------------ */
+  .stats {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    border: 1px solid var(--line); border-top: none;
+  }
+  .stat { padding: 14px 18px; border-right: 1px solid var(--line); }
+  .stat:last-child { border-right: none; }
+  .stat b { display: block; font-size: 26px; font-weight: 600; letter-spacing: -.02em; }
+  .stat span { font-size: 12.5px; color: var(--muted); }
+  .stat .amber { color: var(--amber); }
+  .stat .mint { color: var(--mint); }
+  .stat .coral { color: var(--coral); }
+
+  /* ---- composer -------------------------------------------------------- */
+  .composer {
+    border: 1px solid var(--line); background: var(--panel);
+    margin-top: 22px; padding: 16px 18px;
+  }
+  .composer h2 { margin: 0 0 12px; font-size: 14px; font-weight: 600; color: var(--muted); }
+  .fields { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 10px; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 12px; color: var(--muted); }
+  .field input {
+    background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
+    padding: 8px 10px; font-size: 14px; border-radius: 0;
+  }
+  .field input:focus { outline: 2px solid var(--focus); outline-offset: -1px; }
+  .actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
+  button {
+    font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+    background: var(--amber); color: #1A1408; border: none; padding: 9px 18px;
+  }
+  button.secondary {
+    background: transparent; color: var(--text);
+    border: 1px solid var(--line); font-weight: 500;
+  }
+  button:hover { filter: brightness(1.08); }
+  button:active { transform: translateY(1px); }
+  button:focus-visible, a:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .note { font-size: 13px; color: var(--muted); }
+  .note em { color: var(--coral); font-style: normal; }
+
+  /* ---- ledger ----------------------------------------------------------- */
+  .ledger { margin-top: 22px; border: 1px solid var(--line); }
+  .ledger-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 14px 18px 0;
+  }
+  .ledger-head h2 { margin: 0; font-size: 14px; font-weight: 600; color: var(--muted); }
+  .ledger-head .hint { font-size: 12.5px; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  th {
+    text-align: left; font-size: 11.5px; font-weight: 500; color: var(--muted);
+    padding: 6px 18px; border-bottom: 1px solid var(--line);
+  }
+  td { padding: 10px 18px; border-bottom: 1px solid var(--line); font-size: 13.5px; vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr.flash td { animation: settle 1.2s ease-out; }
+  @keyframes settle { from { background: rgba(62, 207, 142, .16); } to { background: transparent; } }
+  .txn-id { font-weight: 600; }
+  .amt { text-align: right; }
+  th.amt { text-align: right; }
+  .pill {
+    display: inline-block; font-size: 11.5px; padding: 2px 8px; letter-spacing: .04em;
+  }
+  .pill.processing { color: var(--amber); background: rgba(232,180,74,.12); }
+  .pill.processed { color: var(--mint); background: rgba(62,207,142,.12); }
+  .pill.dup { color: var(--coral); background: rgba(224,104,92,.12); }
+  .bar {
+    height: 4px; background: var(--line); margin-top: 6px; width: 130px;
+  }
+  .bar i { display: block; height: 100%; background: var(--amber); width: 0%; }
+  .elapsed { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .empty { padding: 34px 18px; color: var(--muted); font-size: 14px; }
+  .empty b { color: var(--text); }
+
+  /* ---- toast ------------------------------------------------------------ */
+  #toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(0);
+    background: var(--panel-2); border: 1px solid var(--line); border-left: 3px solid var(--mint);
+    padding: 10px 18px; font-size: 13.5px; max-width: 90vw;
+    opacity: 0; pointer-events: none; transition: opacity .25s;
+  }
+  #toast.show { opacity: 1; }
+  #toast.dup { border-left-color: var(--coral); }
+  #toast.err { border-left-color: var(--coral); }
+
+  @media (max-width: 760px) {
+    .fields { grid-template-columns: 1fr 1fr; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .stat:nth-child(2) { border-right: none; }
+    .stat:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+    td, th { padding-left: 12px; padding-right: 12px; }
+    .hide-sm { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    tr.flash td { animation: none; }
+    #toast { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Settlement Ledger</h1>
+    <span class="health"><span class="dot" id="healthDot"></span><span id="healthText">checking…</span></span>
+    <span class="clock mono" id="clock"></span>
+  </header>
+
+  <div class="stats mono" aria-label="Totals">
+    <div class="stat"><b id="stWebhooks">0</b><span>webhooks acked</span></div>
+    <div class="stat"><b class="coral" id="stDupes">0</b><span>duplicates caught</span></div>
+    <div class="stat"><b class="amber" id="stProcessing">0</b><span>processing</span></div>
+    <div class="stat"><b class="mint" id="stProcessed">0</b><span>processed</span></div>
+  </div>
+
+  <section class="composer">
+    <h2>Send a webhook</h2>
+    <div class="fields">
+      <div class="field"><label for="fTxn">transaction_id</label>
+        <input id="fTxn" class="mono" spellcheck="false"></div>
+      <div class="field"><label for="fAmount">amount</label>
+        <input id="fAmount" class="mono" value="1500"></div>
+      <div class="field"><label for="fCurrency">currency</label>
+        <input id="fCurrency" class="mono" value="INR" maxlength="3"></div>
+      <div class="field"><label for="fMerchant">destination</label>
+        <input id="fMerchant" class="mono" value="acc_merchant_456" spellcheck="false"></div>
+    </div>
+    <div class="actions">
+      <button id="btnSend">Send webhook</button>
+      <button id="btnDup" class="secondary">Re-send same id</button>
+      <span class="note">Re-sending the same <span class="mono">transaction_id</span> is safe — the ledger keeps exactly one row. <em>Duplicates are counted, never processed twice.</em></span>
+    </div>
+  </section>
+
+  <section class="ledger">
+    <div class="ledger-head">
+      <h2>Transactions</h2>
+      <span class="hint">each one settles ~30&nbsp;s after its webhook</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>transaction</th>
+          <th class="amt">amount</th>
+          <th>status</th>
+          <th class="hide-sm">processed at</th>
+          <th>countdown</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div class="empty" id="empty">Nothing here yet. <b>Send a webhook</b> above — it gets a 202 in a few milliseconds, then settles on its own.</div>
+  </section>
+
+</div>
+<div id="toast" class="mono" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const API = "";  // same origin; the app serves this page at /demo
+
+  const rows = new Map();   // txn_id -> {el, bar, elapsed, createdMs, seenStatus}
+
+  // ---- clock + health ----------------------------------------------------
+  function tickClock() {
+    $("clock").textContent = new Date().toISOString().replace("T", " ").slice(0, 19) + " UTC";
+  }
+  tickClock();
+  setInterval(tickClock, 1000);
+
+  async function checkHealth() {
+    try {
+      const r = await fetch(API + "/");
+      const j = await r.json();
+      const ok = j.status === "HEALTHY";
+      $("healthDot").className = "dot" + (ok ? " ok" : "");
+      $("healthText").textContent = ok ? "service healthy" : "degraded";
+    } catch {
+      $("healthDot").className = "dot";
+      $("healthText").textContent = "service unreachable";
+    }
+  }
+
+  // ---- toast --------------------------------------------------------------
+  let toastTimer;
+  function toast(msg, cls) {
+    const t = $("toast");
+    t.textContent = msg;
+    t.className = "mono show" + (cls ? " " + cls : "");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove("show"), 3200);
+  }
+
+  // ---- stats ---------------------------------------------------------------
+  async function refreshStats() {
+    try {
+      const j = await (await fetch(API + "/v1/stats")).json();
+      $("stWebhooks").textContent = j.webhooks;
+      $("stDupes").textContent = j.duplicates;
+      $("stProcessing").textContent = j.processing;
+      $("stProcessed").textContent = j.processed;
+    } catch { /* transient */ }
+  }
+
+  // ---- ledger rows ----------------------------------------------------------
+  function fmtAmount(a, c) {
+    return new Intl.NumberFormat(undefined, { style: "currency", currency: c, currencyDisplay: "code" })
+      .format(a).replace(c, "").trim() + " " + c;
+  }
+
+  function ensureRow(txn) {
+    if (rows.has(txn.transaction_id)) return rows.get(txn.transaction_id);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><span class="txn-id mono">${txn.transaction_id}</span><br>
+          <span class="elapsed mono">webhook ${new Date(txn.created_at).toLocaleTimeString()}</span></td>
+      <td class="amt mono">${fmtAmount(txn.amount, txn.currency)}</td>
+      <td><span class="pill processing">PROCESSING</span>
+          <div class="bar"><i></i></div><div class="elapsed mono"></div></td>
+      <td class="hide-sm mono">—</td>
+      <td class="mono" data-countdown></td>`;
+    $("tbody").prepend(tr);
+    $("empty").style.display = "none";
+    const rec = {
+      el: tr,
+      pill: tr.querySelector(".pill"),
+      bar: tr.querySelector(".bar i"),
+      elapsed: tr.querySelector("td:nth-child(3) .elapsed"),
+      processedAt: tr.querySelector("td:nth-child(4)"),
+      countdown: tr.querySelector("[data-countdown]"),
+      createdMs: new Date(txn.created_at).getTime(),
+      status: null,
+    };
+    rows.set(txn.transaction_id, rec);
+    return rec;
+  }
+
+  function renderRow(txn) {
+    const rec = ensureRow(txn);
+    if (rec.status !== txn.status) {
+      const first = rec.status === null;
+      rec.status = txn.status;
+      if (txn.status === "PROCESSED") {
+        rec.pill.className = "pill processed";
+        rec.pill.textContent = "PROCESSED";
+        rec.bar.style.width = "100%";
+        rec.bar.style.background = "var(--mint)";
+        rec.processedAt.textContent = txn.processed_at
+          ? new Date(txn.processed_at).toLocaleTimeString() : "—";
+        rec.countdown.textContent = "settled";
+        rec.elapsed.textContent = txn.processed_at
+          ? `settled in ${((new Date(txn.processed_at) - rec.createdMs) / 1000).toFixed(1)}s`
+          : "";
+        if (!first) {
+          rec.el.classList.remove("flash");
+          void rec.el.offsetWidth;      // restart the animation
+          rec.el.classList.add("flash");
+        }
+      } else {
+        rec.pill.className = "pill processing";
+        rec.pill.textContent = "PROCESSING";
+        rec.processedAt.textContent = "—";
+      }
+    }
+    if (txn.status === "PROCESSING") {
+      const sec = (Date.now() - rec.createdMs) / 1000;
+      rec.bar.style.width = Math.min(100, (sec / 30) * 100) + "%";
+      rec.elapsed.textContent = `${Math.max(0, 30 - sec).toFixed(0)}s to settle`;
+      rec.countdown.textContent = `${sec.toFixed(0)}s since webhook`;
+    }
+  }
+
+  async function refreshLedger() {
+    for (const id of rows.keys()) {
+      try {
+        const list = await (await fetch(API + "/v1/transactions/" + encodeURIComponent(id))).json();
+        if (list.length) renderRow(list[0]);
+      } catch { /* transient */ }
+    }
+  }
+
+  // ---- sending ---------------------------------------------------------------
+  function randomTxnId() {
+    return "txn_" + crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+  }
+  $("fTxn").value = randomTxnId();
+
+  async function send(reuseId) {
+    const body = {
+      transaction_id: reuseId ? $("fTxn").value.trim() : randomTxnId(),
+      source_account: "acc_user_789",
+      destination_account: $("fMerchant").value.trim() || "acc_merchant_456",
+      amount: parseFloat($("fAmount").value) || 1500,
+      currency: ($("fCurrency").value.trim() || "INR").toUpperCase(),
+    };
+    if (!reuseId) $("fTxn").value = body.transaction_id;
+    try {
+      const t0 = performance.now();
+      const r = await fetch(API + "/v1/webhooks/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const j = await r.json();
+      const roundTrip = (performance.now() - t0).toFixed(1);
+      if (j.duplicate) {
+        toast(`202 · duplicate ${body.transaction_id} ignored in ${roundTrip} ms — already in the ledger`, "dup");
+      } else {
+        toast(`202 · accepted ${body.transaction_id} in ${roundTrip} ms (ack ${j.ack_latency_ms} ms)`);
+      }
+      await Promise.all([refreshLedger(), refreshStats()]);
+    } catch (e) {
+      toast("Request failed — is the API running on :8000?", "err");
+    }
+  }
+  $("btnSend").addEventListener("click", () => send(false));
+  $("btnDup").addEventListener("click", () => send(true));
+  $("fTxn").addEventListener("keydown", (e) => { if (e.key === "Enter") send(true); });
+
+  // ---- loops -------------------------------------------------------------------
+  checkHealth();
+  refreshStats();
+  setInterval(refreshStats, 3000);
+  setInterval(refreshLedger, 1000);
+})();
+</script>
+</body>
+</html>

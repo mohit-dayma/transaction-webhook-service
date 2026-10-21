@@ -91,7 +91,9 @@ async def worker_loop() -> None:
 
 
 async def main() -> None:
-    await db.connect()
+    # Own, small pool: the API and worker each fit under the hosted-Postgres
+    # server-side connection budget (see db.connect).
+    await db.connect(pool_max=int(os.environ.get("WORKER_POOL_MAX", "2")))
     await db.init_schema()
     try:
         await worker_loop()

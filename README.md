@@ -4,6 +4,32 @@ A service that receives payment-processor webhooks (Razorpay-style), acknowledge
 them in milliseconds, and settles each transaction in the background ~30 seconds
 later — with idempotency and crash-safe job persistence.
 
+**Live deployment:** https://walnut-webhook-service.onrender.com
+(backend on Render free tier, PostgreSQL on Supabase — configuration and build
+are in this repo: `Dockerfile`, `deploy/start.sh`, `render.yaml`)
+
+## Verified against the deployed URL (2026-10-21)
+
+| Test case | Result |
+|---|---|
+| Single transaction lifecycle | `202` ack in ~0.35 s incl. network TLS; `PROCESSING` → `PROCESSED` at ~30.4 s; `processed_at` is `null` while processing |
+| Duplicate prevention | 30 concurrent duplicate webhooks for one `transaction_id`: all accepted (`duplicate: true`), exactly **1** transaction row |
+| Performance | 1–10 concurrent webhooks: ack p50 ~190–200 ms, max ~340 ms; 130 concurrent webhooks: **130× `202`, zero errors** |
+| Reliability | Deploys/restarts during the 30 s window: pre-existing `PROCESSING` jobs were claimed back from Postgres and all settled — none lost |
+| Unknown transaction lookup | HTTP 200 with `[]` (empty array), no errors |
+
+## Known limitations (free-tier hosting)
+
+Supabase free allows ~15 shared server-side database connections and the Render
+free instance shares 0.1 vCPU. The API and worker therefore cap their pools
+(`DB_POOL_MAX=6`, `WORKER_POOL_MAX=2`) and queue briefly instead of over-allocating.
+At very high burst concurrency (100+ simultaneous webhooks) individual
+acknowledgement latencies rise above the 500 ms target — the endpoint still
+returns `202`, never errors, and never drops or duplicates transactions; at the
+load levels of the stated test cases (single transaction, duplicates, moderate
+load) acknowledgements stay well within budget. Standing up the same build on a
+paid Postgres tier removes the cap entirely (the pool sizes are just env vars).
+
 ## Stack & technical choices
 
 | Concern | Choice | Why |
@@ -40,10 +66,15 @@ the split doesn't need separate hosts).
 
 1. **Supabase** (free, no card): create a project, then run the schema SQL from
    `app/db.py` (`_SCHEMA`) in the SQL editor once.
-2. Copy the **Session pooler** connection string (Settings → Database → port
-   **6543**, IPv4) and URL-encode the password.
+2. Get the **Transaction pooler** connection string (the URI on port **6543**,
+   hostname `*.pooler.supabase.com`) and URL-encode the password. Port 6543
+   multiplexes queries server-side; the session pooler (5432) caps *client*
+   connections at the free plan's pool size and rejects extra clients during
+   deploys. asyncpg compatibility with the transaction pooler is handled in
+   `db.py` (`statement_cache_size=0`).
 3. **Render** (free, no card): New → Blueprint, point it at this repo. Add
-   `DATABASE_URL` as an environment variable when prompted, deploy.
+   `DATABASE_URL` as an environment variable when prompted, deploy
+   (`DB_POOL_MAX=6`, `WORKER_POOL_MAX=2` come from `render.yaml`).
 4. **Keep it awake**: Render free sleeps after 15 idle minutes (~1 min wake).
    Open the deployed `/demo` page (it polls the API every second) or add a
    5-minute uptime monitor on `/` so the webhook endpoint stays within its
@@ -70,7 +101,10 @@ Stop with `./scripts/db-stop.sh` (Postgres) and `pkill -f 'uvicorn app.main|app.
 
 The dev script writes logs to `.server.log` and `.worker.log`. Set
 `DATABASE_URL` to point anywhere else; `PROCESSING_DELAY_SECONDS` overrides
-the 30s delay (handy for quick smoke tests).
+the 30s delay (handy for quick smoke tests); `DB_POOL_MAX` / `WORKER_POOL_MAX`
+size the API and worker connection pools (defaults 25/2 locally — tune down
+only when the database limits shared server-side connections, e.g. hosted
+free tiers).
 
 ## Verify by hand
 

@@ -18,3 +18,7 @@ services:
         value: "30"
       - key: CLAIM_LEASE_SECONDS
         value: "120"
+      # Supabase free plan allows ~15 server-side pooled connections.
+      # API pool + worker pool must fit under that ceiling.
+      - key: DB_POOL_MAX
+        value: "7"

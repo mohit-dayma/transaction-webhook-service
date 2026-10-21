@@ -8,6 +8,8 @@ processing run). Every receipt, duplicate or not, is logged in
 webhook_receipts so duplicate counts can be shown.
 """
 
+import os
+
 import asyncpg
 
 from . import config
@@ -54,8 +56,13 @@ class Database:
         self.pool: asyncpg.Pool | None = None
 
     async def connect(self) -> None:
+        # Pool size is capped via DB_POOL_MAX. Hosted Postgres (e.g. Supabase
+        # free plan) allows ~15 server-side connections; the API and the
+        # worker each size their own pool under that budget. The webhook
+        # INSERT is ~1-3 ms, so a small pool with asyncpg's internal queueing
+        # still drains bursts far faster than the 500ms ack budget.
         self.pool = await asyncpg.create_pool(
-            self.dsn, min_size=1, max_size=25,
+            self.dsn, min_size=1, max_size=int(os.environ.get("DB_POOL_MAX", "25")),
             # Local-only service: skip per-commit fsync so webhook acks stay
             # well under the 500ms budget on slow disks. Commits are still
             # flushed on WAL boundaries and survive app/worker crashes.
